@@ -1,42 +1,45 @@
-# core/portfolio.py
 from dataclasses import dataclass, field
+from typing import Dict, List, Optional
 from datetime import datetime
-from typing import List, Optional
 
 
-# Representa uma resposta do aluno a um passo
-@dataclass
+# =========================
+# REGISTROS (HISTÓRICO)
+# =========================
+
+@dataclass(frozen=True)
 class StepRecord:
-    step_title: str
-    prompt: str
+    step_index: int
     student_answer: str
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    created_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
 
 
-# Representa uma sessão de estudo (tema + objetivo)
 @dataclass
 class StudySession:
     session_id: str
-    topic: str
-    goal: str
-    started_at: datetime = field(default_factory=datetime.utcnow)
-    steps: List[StepRecord] = field(default_factory=list)
+    records: List[StepRecord] = field(default_factory=list)
 
-    def add_step(self, record: StepRecord) -> None:
-        self.steps.append(record)
+    def add_record(self, record: StepRecord) -> None:
+        self.records.append(record)
+
+    def last_record(self) -> Optional[StepRecord]:
+        if not self.records:
+            return None
+        return self.records[-1]
+
+    def last_answer_text(self) -> Optional[str]:
+        last = self.last_record()
+        if last is None:
+            return None
+        return last.student_answer
 
 
-# Objeto central: Portfólio do Aluno
 @dataclass
 class StudentPortfolio:
-    student_id: str
-    created_at: datetime = field(default_factory=datetime.utcnow)
-    sessions: List[StudySession] = field(default_factory=list)
+    sessions: Dict[str, StudySession] = field(default_factory=dict)
 
-    def start_session(self, session: StudySession) -> None:
-        self.sessions.append(session)
+    def add_session(self, session: StudySession) -> None:
+        self.sessions[session.session_id] = session
 
-    def current_session(self) -> Optional[StudySession]:
-        if not self.sessions:
-            return None
-        return self.sessions[-1]
+    def get_session(self, session_id: str) -> StudySession:
+        if se
