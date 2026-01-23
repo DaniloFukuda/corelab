@@ -4,7 +4,7 @@ import uuid
 
 from agents.planner_agent import SimplePlannerAgent, StudyStep
 from agents.tutor_agent import PlaceholderTutorAgent
-from core.portfolio import StudentPortfolio, StudySession, StepRecord
+from core.portfolio import StudentPortfolio, StudySession
 
 
 # =========================
@@ -32,6 +32,7 @@ class NucleusResult:
     plan: List[StudyStep]
     current_step_index: int
     instruction: str
+    request: StudyRequest  # guardamos para o loop do main usar o núcleo sem recalcular
 
 
 # =========================
@@ -75,13 +76,14 @@ class Nucleus:
         first_step = plan[current_step_index]
 
         # instrução inicial
-        instruction = self.tutor_agent.explain(first_step)
+        instruction = self.explain_step(request=request, step=first_step)
 
         return NucleusResult(
             session_id=session_id,
             plan=plan,
             current_step_index=current_step_index,
             instruction=instruction,
+            request=request,
         )
 
     # -------------------------
@@ -127,15 +129,33 @@ class Nucleus:
         )
 
     # -------------------------
+    # API DO NÚCLEO (TUTOR)
+    # -------------------------
+
+    def explain_step(self, request: StudyRequest, step: StudyStep) -> str:
+        """
+        O cliente (main) NÃO chama tutor diretamente.
+        Ele pede ao núcleo, e o núcleo adapta o StudyStep para a assinatura do tutor.
+        """
+        step_title = getattr(step, "title", None) or getattr(step, "step_title", None) or str(step)
+        step_prompt = getattr(step, "prompt", None) or getattr(step, "step_prompt", None) or ""
+
+        return self.tutor_agent.explain(
+            request.topic,
+            request.level,
+            request.goal,
+            step_title,
+            step_prompt,
+        )
+
+    # -------------------------
     # VALIDAÇÕES
     # -------------------------
 
     def _validate_request(self, request: StudyRequest) -> None:
         if not request.topic.strip():
             raise ValueError("Topic cannot be empty")
-
         if not request.level.strip():
             raise ValueError("Level cannot be empty")
-
         if not request.goal.strip():
             raise ValueError("Goal cannot be empty")

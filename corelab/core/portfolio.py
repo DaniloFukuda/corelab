@@ -42,4 +42,20 @@ class StudentPortfolio:
         self.sessions[session.session_id] = session
 
     def get_session(self, session_id: str) -> StudySession:
-        if se
+        if session_id not in self.sessions:
+            raise ValueError(f"Session not found: {session_id}")
+        return self.sessions[session_id]
+
+    def record_step(
+        self,
+        session_id: str,
+        step_index: int,
+        student_answer: str,
+    ) -> StepRecord:
+        session = self.get_session(session_id)
+        record = StepRecord(
+            step_index=step_index,
+            student_answer=student_answer,
+        )
+        session.add_record(record)
+        return record

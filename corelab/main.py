@@ -21,29 +21,29 @@ def main() -> None:
 
     print("\n--- Plano de estudo ---")
     for i, step in enumerate(plan):
-        print(f"{i}. {step.title}")
+        title = getattr(step, "title", None) or getattr(step, "step_title", None) or str(step)
+        print(f"{i}. {title}")
 
     print("\n--- Início ---")
 
     while True:
         step = plan[step_index]
+        title = getattr(step, "title", None) or getattr(step, "step_title", None) or str(step)
 
-        # instrução do tutor (agente)
-        instruction = nucleus.tutor_agent.explain(step)
-        print(f"\n[Passo {step_index}] {step.title}")
+        # agora o cliente pede ao NÚCLEO (não ao tutor diretamente)
+        instruction = nucleus.explain_step(request=request, step=step)
+
+        print(f"\n[Passo {step_index}] {title}")
         print(instruction)
 
-        # resposta do aluno
         answer = input("> ")
 
-        # registra no portfólio
         portfolio.record_step(
             session_id=session_id,
             step_index=step_index,
             student_answer=answer,
         )
 
-        # decisão do núcleo (camada 3)
         decision = nucleus.decide(
             portfolio=portfolio,
             session_id=session_id,
@@ -54,7 +54,6 @@ def main() -> None:
         print(f"[decision] {decision.action} — {decision.reason}")
 
         if decision.action == "retry":
-            # repete o mesmo passo
             continue
 
         if decision.next_step_index is None:
