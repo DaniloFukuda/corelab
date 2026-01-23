@@ -1,11 +1,15 @@
-# core/nucleus.py
 from dataclasses import dataclass
+from typing import Optional, List
 import uuid
 
 from agents.planner_agent import SimplePlannerAgent, StudyStep
 from agents.tutor_agent import PlaceholderTutorAgent
 from core.portfolio import StudentPortfolio, StudySession, StepRecord
 
+
+# =========================
+# CONTRATOS (DATACLASSES)
+# =========================
 
 @dataclass(frozen=True)
 class StudyRequest:
@@ -14,70 +18,124 @@ class StudyRequest:
     goal: str
 
 
+@dataclass(frozen=True)
+class NucleusDecision:
+    action: str  # "advance" | "retry"
+    reason: str
+    current_step_index: int
+    next_step_index: Optional[int]
+
+
+@dataclass(frozen=True)
+class NucleusResult:
+    session_id: str
+    plan: List[StudyStep]
+    current_step_index: int
+    instruction: str
+
+
+# =========================
+# NÚCLEO (AUTORIDADE)
+# =========================
+
 class Nucleus:
-    """
-    Núcleo = autoridade do sistema.
-    - valida entrada
-    - cria sessão no Portfólio (estado oficial)
-    - chama agentes (planner/tutor)
-    - registra respostas via receive_answer()
-    """
-    def __init__(self, planner=None, tutor=None, student_id: str = "demo-student"):
-        self.planner = planner or SimplePlannerAgent()
-        self.tutor = tutor or PlaceholderTutorAgent()
+    def __init__(
+        self,
+        planner_agent: Optional[SimplePlannerAgent] = None,
+        tutor_agent: Optional[PlaceholderTutorAgent] = None,
+    ):
+        self.planner_agent = planner_agent or SimplePlannerAgent()
+        self.tutor_agent = tutor_agent or PlaceholderTutorAgent()
 
-        # Portfólio do aluno (estado central)
-        self.portfolio = StudentPortfolio(student_id=student_id)
-        self.current_session: StudySession | None = None
+    # ---------
+    # ENTRADA
+    # ---------
 
-    def start(self, req: StudyRequest) -> dict:
-        # 1) Autoridade primeiro: valida antes de criar estado
-        self._validate(req)
+    def start(
+        self,
+        request: StudyRequest,
+        portfolio: StudentPortfolio,
+    ) -> NucleusResult:
+        self._validate_request(request)
 
-        # 2) Cria uma sessão (container lógico do estudo)
-        session = StudySession(
-            session_id=str(uuid.uuid4()),
-            topic=req.topic,
-            goal=req.goal,
-        )
-        self.portfolio.start_session(session)
-        self.current_session = session
+        # cria sessão
+        session_id = str(uuid.uuid4())
+        session = StudySession(session_id=session_id)
+        portfolio.add_session(session)
 
-        # 3) Executores (agentes)
-        steps: list[StudyStep] = self.planner.build_plan(req.topic, req.level, req.goal)
-        first = steps[0]
-
-        tutor_output = self.tutor.explain(
-            req.topic, req.level, req.goal,
-            first.title, first.prompt
+        # gera plano
+        plan = self.planner_agent.build_plan(
+            topic=request.topic,
+            level=request.level,
+            goal=request.goal,
         )
 
-        # 4) Resposta estruturada para o cliente
-        return {
-            "plan": [{"title": s.title, "prompt": s.prompt} for s in steps],
-            "current_step": {"title": first.title, "prompt": first.prompt},
-            "tutor_output": tutor_output,
-            "session_id": session.session_id,  # útil para debug/inspeção
-        }
+        # seleciona primeiro passo
+        current_step_index = 0
+        first_step = plan[current_step_index]
 
-    def receive_answer(self, step_title: str, prompt: str, answer: str) -> None:
-        """
-        Registra a resposta do aluno no Portfólio (sessão atual).
-        """
-        if not self.current_session:
-            raise RuntimeError("Nenhuma sessão ativa. Chame start() antes de receive_answer().")
+        # instrução inicial
+        instruction = self.tutor_agent.explain(first_step)
 
-        record = StepRecord(
-            step_title=step_title,
-            prompt=prompt,
-            student_answer=answer,
+        return NucleusResult(
+            session_id=session_id,
+            plan=plan,
+            current_step_index=current_step_index,
+            instruction=instruction,
         )
-        self.current_session.add_step(record)
 
-    def _validate(self, req: StudyRequest) -> None:
-        if not req.topic.strip():
-            raise ValueError("topic vazio")
-        if not req.level.strip():
-            raise ValueError("level vazio")
-        if not req.goal.strip():
-            raise ValueError("goal vazio")
+    # -------------------------
+    # CAMADA 3 — DECISÃO
+    # -------------------------
+
+    def decide(
+        self,
+        portfolio: StudentPortfolio,
+        session_id: str,
+        current_step_index: int,
+        total_steps: int,
+    ) -> NucleusDecision:
+
+        session = portfolio.get_session(session_id)
+        last_answer = session.last_answer_text()
+
+        # REGRA 1 — resposta vazia → retry
+        if last_answer is None or not str(last_answer).strip():
+            return NucleusDecision(
+                action="retry",
+                reason="Empty or missing answer",
+                current_step_index=current_step_index,
+                next_step_index=current_step_index,
+            )
+
+        # REGRA 2 — última etapa → encerrar
+        next_index = current_step_index + 1
+        if next_index >= total_steps:
+            return NucleusDecision(
+                action="advance",
+                reason="Answer provided; end of plan reached",
+                current_step_index=current_step_index,
+                next_step_index=None,
+            )
+
+        # REGRA 3 — avançar normalmente
+        return NucleusDecision(
+            action="advance",
+            reason="Answer provided",
+            current_step_index=current_step_index,
+            next_step_index=next_index,
+        )
+
+    # -------------------------
+    # VALIDAÇÕES
+    # -------------------------
+
+    def _validate_request(self, request: StudyRequest) -> None:
+        if not request.topic.strip():
+            raise ValueError("Topic cannot be empty")
+
+        if not request.level.strip():
+            raise ValueError("Level cannot be empty")
+
+        if not request.goal.strip():
+            raise ValueError("Goal cannot be empty")
