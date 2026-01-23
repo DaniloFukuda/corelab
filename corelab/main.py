@@ -1,56 +1,67 @@
-# main.py
 from core.nucleus import Nucleus, StudyRequest
+from core.portfolio import StudentPortfolio
 
 
-def main():
-    print("=== Plataforma de Matemática (MVP) ===")
+def main() -> None:
+    print("=== Plataforma de Estudos (MVP) ===")
 
-    # 1) Coleta de dados iniciais (cliente)
-    topic = input("Tema (ex: frações): ").strip()
-    level = input("Nível (ex: fundamental/médio): ").strip()
-    goal = input("Objetivo (ex: somar frações): ").strip()
+    topic = input("Tema: ").strip()
+    level = input("Nível: ").strip()
+    goal = input("Objetivo: ").strip()
 
-    # 2) Cria o núcleo (autoridade)
+    portfolio = StudentPortfolio()
     nucleus = Nucleus()
 
-    # 3) Inicia o estudo (cria sessão + plano + instrução)
-    result = nucleus.start(
-        StudyRequest(
-            topic=topic,
-            level=level,
-            goal=goal
+    request = StudyRequest(topic=topic, level=level, goal=goal)
+    result = nucleus.start(request=request, portfolio=portfolio)
+
+    session_id = result.session_id
+    plan = result.plan
+    step_index = result.current_step_index
+
+    print("\n--- Plano de estudo ---")
+    for i, step in enumerate(plan):
+        print(f"{i}. {step.title}")
+
+    print("\n--- Início ---")
+
+    while True:
+        step = plan[step_index]
+
+        # instrução do tutor (agente)
+        instruction = nucleus.tutor_agent.explain(step)
+        print(f"\n[Passo {step_index}] {step.title}")
+        print(instruction)
+
+        # resposta do aluno
+        answer = input("> ")
+
+        # registra no portfólio
+        portfolio.record_step(
+            session_id=session_id,
+            step_index=step_index,
+            student_answer=answer,
         )
-    )
 
-    # 4) Mostra o plano gerado
-    print("\n--- Plano de Estudo ---")
-    for i, step in enumerate(result["plan"], start=1):
-        print(f"{i}. {step['title']} — {step['prompt']}")
+        # decisão do núcleo (camada 3)
+        decision = nucleus.decide(
+            portfolio=portfolio,
+            session_id=session_id,
+            current_step_index=step_index,
+            total_steps=len(plan),
+        )
 
-    # 5) Mostra a instrução do passo atual
-    print("\n--- Tutor ---")
-    print(result["tutor_output"])
+        print(f"[decision] {decision.action} — {decision.reason}")
 
-    # 6) Recebe a resposta do aluno
-    print("\n--- Sua resposta ---")
-    user_answer = input("> ")
+        if decision.action == "retry":
+            # repete o mesmo passo
+            continue
 
-    # 7) Registra a resposta no Portfólio via Núcleo
-    nucleus.receive_answer(
-        step_title=result["current_step"]["title"],
-        prompt=result["current_step"]["prompt"],
-        answer=user_answer
-    )
+        if decision.next_step_index is None:
+            print("\n✅ Plano finalizado.")
+            break
 
-    # 8) Debug mínimo (apenas para validar o MVP)
-    current_session = nucleus.portfolio.current_session()
-
-    print("\n--- Resposta registrada no Portfólio ---")
-    print(f"ID da sessão: {current_session.session_id}")
-    print(f"Total de sessões no portfólio: {len(nucleus.portfolio.sessions)}")
-    print(f"Passos registrados nesta sessão: {len(current_session.steps)}")
-    print(f"Última resposta: {current_session.steps[-1].student_answer}")
-
+        step_index = decision.next_step_index
 
 
 if __name__ == "__main__":
