@@ -20,13 +20,14 @@ class StudyRequest:
     level: str
     goal: str
 
-
 @dataclass(frozen=True)
 class NucleusDecision:
     action: str  # "advance" | "retry"
     reason: str
     current_step_index: int
     next_step_index: Optional[int]
+    friction_message: Optional[str] = None
+
 
 
 @dataclass(frozen=True)
@@ -114,11 +115,13 @@ class Nucleus:
 
         # mantém o contrato do NucleusDecision exatamente como antes (main não quebra)
         return NucleusDecision(
-            action=p.action.value,  # "advance" | "retry"
+            action=p.action.value,
             reason=p.reason,
             current_step_index=p.current_step_index,
             next_step_index=p.next_step_index,
+            friction_message=getattr(p, "friction_message", None),
         )
+
 
     # -------------------------
     # API DO NÚCLEO (TUTOR)
