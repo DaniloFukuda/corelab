@@ -1,3 +1,4 @@
+# core/nucleus.py
 from dataclasses import dataclass
 from typing import Optional, List
 import uuid
@@ -5,6 +6,8 @@ import uuid
 from agents.planner_agent import SimplePlannerAgent, StudyStep
 from agents.tutor_agent import PlaceholderTutorAgent
 from core.portfolio import StudentPortfolio, StudySession
+
+from core.policy import DecisionPolicy, SimpleDecisionPolicy
 
 
 # =========================
@@ -44,9 +47,11 @@ class Nucleus:
         self,
         planner_agent: Optional[SimplePlannerAgent] = None,
         tutor_agent: Optional[PlaceholderTutorAgent] = None,
+        policy: Optional[DecisionPolicy] = None,
     ):
         self.planner_agent = planner_agent or SimplePlannerAgent()
         self.tutor_agent = tutor_agent or PlaceholderTutorAgent()
+        self.policy = policy or SimpleDecisionPolicy()
 
     # ---------
     # ENTRADA
@@ -87,7 +92,7 @@ class Nucleus:
         )
 
     # -------------------------
-    # CAMADA 3 — DECISÃO
+    # CAMADA 4 — POLICY (DECISÃO FORA DO NÚCLEO)
     # -------------------------
 
     def decide(
@@ -99,33 +104,20 @@ class Nucleus:
     ) -> NucleusDecision:
 
         session = portfolio.get_session(session_id)
-        last_answer = session.last_answer_text()
 
-        # REGRA 1 — resposta vazia → retry
-        if last_answer is None or not str(last_answer).strip():
-            return NucleusDecision(
-                action="retry",
-                reason="Empty or missing answer",
-                current_step_index=current_step_index,
-                next_step_index=current_step_index,
-            )
-
-        # REGRA 2 — última etapa → encerrar
-        next_index = current_step_index + 1
-        if next_index >= total_steps:
-            return NucleusDecision(
-                action="advance",
-                reason="Answer provided; end of plan reached",
-                current_step_index=current_step_index,
-                next_step_index=None,
-            )
-
-        # REGRA 3 — avançar normalmente
-        return NucleusDecision(
-            action="advance",
-            reason="Answer provided",
+        # delega 100% a lógica para a policy
+        p = self.policy.decide(
+            session=session,
             current_step_index=current_step_index,
-            next_step_index=next_index,
+            total_steps=total_steps,
+        )
+
+        # mantém o contrato do NucleusDecision exatamente como antes (main não quebra)
+        return NucleusDecision(
+            action=p.action.value,  # "advance" | "retry"
+            reason=p.reason,
+            current_step_index=p.current_step_index,
+            next_step_index=p.next_step_index,
         )
 
     # -------------------------
