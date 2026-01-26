@@ -33,6 +33,21 @@ class StudySession:
             return None
         return last.student_answer
 
+    # -------------------------
+    # NOVO: utilitários por step
+    # -------------------------
+
+    def count_attempts(self, step_index: int) -> int:
+        """Quantas tentativas já foram registradas para esse step."""
+        return sum(1 for r in self.records if r.step_index == step_index)
+
+    def last_answer_for_step(self, step_index: int) -> Optional[str]:
+        """Última resposta registrada especificamente para esse step."""
+        for r in reversed(self.records):
+            if r.step_index == step_index:
+                return r.student_answer
+        return None
+
 
 @dataclass
 class StudentPortfolio:
