@@ -1,15 +1,15 @@
+# agents/tutor_agent.py
+
 class PlaceholderTutorAgent:
     """
     Agente tutor (placeholder).
     Depois será substituído por IA.
+
+    Importante: este agente devolve APENAS o texto da instrução do passo.
+    Cabeçalho/ritual ficam no cliente (main).
     """
+
     def explain(self, topic: str, level: str, goal: str, step_title: str, step_prompt: str) -> str:
-        return (
-            "Tutor (placeholder)\n"
-            f"Tema: {topic}\n"
-            f"Nível: {level}\n"
-            f"Objetivo: {goal}\n\n"
-            f"Passo atual: {step_title}\n"
-            f"Instrução: {step_prompt}\n\n"
-            "Responda com honestidade. Se travar, diga exatamente onde."
-        )
+        # Por enquanto, retornamos só o prompt do passo.
+        # Depois, com IA, você pode enriquecer isso (sem incluir cabeçalho fixo do CLI).
+        return step_prompt
