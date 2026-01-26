@@ -3,69 +3,73 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Optional
+from typing import Optional, Protocol
 
-from core.portfolio import StudySession, StudyStep
+from core.portfolio import StudySession
 
 
 class DecisionAction(str, Enum):
-    RETRY = "RETRY"
-    ADVANCE = "ADVANCE"
+    RETRY = "retry"
+    ADVANCE = "advance"
 
 
 @dataclass(frozen=True)
-class Decision:
+class PolicyDecision:
     action: DecisionAction
     reason: str
-    friction_message: Optional[str] = None
+    current_step_index: int
+    next_step_index: Optional[int]
 
 
-class DecisionPolicy:
-    def decide(self, session: StudySession, step: StudyStep) -> Decision:
-        raise NotImplementedError
+class DecisionPolicy(Protocol):
+    def decide(
+        self,
+        session: StudySession,
+        current_step_index: int,
+        total_steps: int,
+    ) -> PolicyDecision:
+        ...
 
 
-class SimpleDecisionPolicy(DecisionPolicy):
+class SimpleDecisionPolicy:
     """
-    Política simples:
-    - Se o último registro do step foi correto => ADVANCE
-    - Se incorreto => RETRY
-    - Se excedeu tentativas máximas => RETRY com fricção (anti-loop)
+    Política simples (equivalente às suas regras atuais da Camada 3):
+    - Regra 1: resposta vazia -> retry
+    - Regra 2: se for a última etapa -> advance e encerra (next_step_index=None)
+    - Regra 3: caso contrário -> advance normalmente
     """
 
-    def __init__(self, max_attempts_per_step: int = 3):
-        self.max_attempts_per_step = max_attempts_per_step
+    def decide(
+        self,
+        session: StudySession,
+        current_step_index: int,
+        total_steps: int,
+    ) -> PolicyDecision:
+        last_answer = session.last_answer_text()
 
-    def decide(self, session: StudySession, step: StudyStep) -> Decision:
-        latest = session.get_latest_record(step_id=step.id)
-
-        if latest is None:
-            return Decision(
+        # REGRA 1 — resposta vazia → retry
+        if last_answer is None or not str(last_answer).strip():
+            return PolicyDecision(
                 action=DecisionAction.RETRY,
-                reason="no_record",
-                friction_message="Responda ao exercício para registrar a primeira tentativa.",
+                reason="Empty or missing answer",
+                current_step_index=current_step_index,
+                next_step_index=current_step_index,
             )
 
-        attempts = session.count_attempts(step_id=step.id)
-
-        if attempts >= self.max_attempts_per_step and not latest.is_correct:
-            return Decision(
-                action=DecisionAction.RETRY,
-                reason="too_many_attempts",
-                friction_message=(
-                    "Você já tentou algumas vezes. Antes de tentar de novo, "
-                    "escreva em 1-2 linhas: (1) onde você travou e (2) qual era sua ideia inicial."
-                ),
-            )
-
-        if latest.is_correct:
-            return Decision(
+        # REGRA 2 — última etapa → encerrar
+        next_index = current_step_index + 1
+        if next_index >= total_steps:
+            return PolicyDecision(
                 action=DecisionAction.ADVANCE,
-                reason="correct",
+                reason="Answer provided; end of plan reached",
+                current_step_index=current_step_index,
+                next_step_index=None,
             )
 
-        return Decision(
-            action=DecisionAction.RETRY,
-            reason="incorrect",
-            friction_message="Tente novamente. Dica: explique seu raciocínio em 1 frase antes de responder.",
+        # REGRA 3 — avançar normalmente
+        return PolicyDecision(
+            action=DecisionAction.ADVANCE,
+            reason="Answer provided",
+            current_step_index=current_step_index,
+            next_step_index=next_index,
         )
