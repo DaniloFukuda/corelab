@@ -1,6 +1,9 @@
 # main.py
+# main.py
 from core.nucleus import Nucleus, StudyRequest
-from core.portfolio import StudentPortfolio
+from core.storage import load_portfolio, save_portfolio
+
+PORTFOLIO_PATH = "data/portfolio.json"
 
 
 def print_header() -> None:
@@ -40,7 +43,9 @@ def main() -> None:
     goal = input("Objetivo: ").strip()
 
     nucleus = Nucleus()
-    portfolio = StudentPortfolio()
+
+    # NOVO: carrega histórico (se existir)
+    portfolio = load_portfolio(PORTFOLIO_PATH)
 
     request = StudyRequest(topic=topic, level=level, goal=goal)
     result = nucleus.start(request=request, portfolio=portfolio)
@@ -48,6 +53,9 @@ def main() -> None:
     plan = result.plan
     session_id = result.session_id
     current_step_index = result.current_step_index
+
+    # Estado local (em vez de recriar `result`)
+    instruction = result.instruction
 
     print_plan(plan)
     print("\n--- Início ---")
@@ -58,7 +66,7 @@ def main() -> None:
 
         # UI (cliente)
         print_context(request, current_step_index, title)
-        print_instruction(title, result.instruction)
+        print_instruction(title, instruction)
 
         # Resposta do aluno
         answer = input("> ")
@@ -69,6 +77,9 @@ def main() -> None:
             step_index=current_step_index,
             student_answer=answer,
         )
+
+        # NOVO: salva depois de cada resposta (nunca perde histórico)
+        save_portfolio(portfolio, PORTFOLIO_PATH)
 
         # Decisão do núcleo (delegando para a policy)
         decision = nucleus.decide(
@@ -84,26 +95,25 @@ def main() -> None:
         if friction_message:
             print(f"[friction] {friction_message}")
 
+        # Próximo índice (robusto)
+        if decision.action == "retry":
+            next_index = current_step_index
+        else:
+            next_index = decision.next_step_index
+
         # Encerramento
-        if decision.action == "advance" and decision.next_step_index is None:
+        if next_index is None:
             print("\n=== Fim do plano ===")
             break
 
-        # Próximo step (retry fica; advance avança)
-        current_step_index = decision.next_step_index
+        current_step_index = next_index
 
-        # Pede nova instrução ao núcleo
+        # Próxima instrução
         next_step = plan[current_step_index]
         instruction = nucleus.explain_step(request=request, step=next_step)
 
-        # Atualiza result local (mesmo contrato)
-        result = type(result)(
-            session_id=session_id,
-            plan=plan,
-            current_step_index=current_step_index,
-            instruction=instruction,
-            request=request,
-        )
+    # Salva no final também (segurança extra)
+    save_portfolio(portfolio, PORTFOLIO_PATH)
 
 
 if __name__ == "__main__":

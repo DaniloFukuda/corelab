@@ -34,7 +34,7 @@ class StudySession:
         return last.student_answer
 
     # -------------------------
-    # NOVO: utilitários por step
+    # Utilitários por step
     # -------------------------
 
     def count_attempts(self, step_index: int) -> int:
@@ -61,13 +61,24 @@ class StudentPortfolio:
             raise ValueError(f"Session not found: {session_id}")
         return self.sessions[session_id]
 
+    # -------------------------
+    # NOVO: get_or_create_session
+    # -------------------------
+
+    def get_or_create_session(self, session_id: str) -> StudySession:
+        """Retorna a sessão; se não existir, cria uma nova."""
+        if session_id not in self.sessions:
+            self.sessions[session_id] = StudySession(session_id=session_id)
+        return self.sessions[session_id]
+
     def record_step(
         self,
         session_id: str,
         step_index: int,
         student_answer: str,
     ) -> StepRecord:
-        session = self.get_session(session_id)
+        # NOVO: em vez de explodir se não existir, cria a sessão automaticamente
+        session = self.get_or_create_session(session_id)
         record = StepRecord(
             step_index=step_index,
             student_answer=student_answer,
